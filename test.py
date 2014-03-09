@@ -53,10 +53,20 @@ class Classifier(object):
     def __init__(self, which, thresh):
         self.which = which
         self.thresh = thresh
-        self.true_ave = None
-        self.false_ave = None
-        self.true_values = []
-        self.false_values = []
+        self.true_child = None
+        self.false_child = None
+        self._values = []
+    @property
+    def values(self):
+        if self.true_child is None:
+            assert self.false_child is None
+            return self._values
+    @property
+    def true_values(self):
+        return self.true_child.values()
+    @property
+    def false_values(self):
+        return self.false_child.values()
     def __call__(self, (x, y)):
         return {'x':x,'y':y}[self.which] > self.thresh
     def train(self, (x, y), value):
