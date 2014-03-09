@@ -2,7 +2,9 @@ import random
 import math
 from collections import namedtuple
 import itertools
+from matplotlib import pyplot
 
+RESOLUTION = 10 # divide each domain into 10 sections max
 
 class Classifier(object):
     def __init__(self, which, thresh):
@@ -17,8 +19,6 @@ class Classifier(object):
     def display(self, observation):
         if hasattr(observation[0], '_fields') and isinstance(self.which, int):
             return '%s > %s' % (observation[0]._fields[self.which], self.thresh)
-        if hasattr(observation[0], 'keys'):
-            return '%s > %s' % (self.which, self.thresh)
         return 'data[%s] > %s' % (self.which, self.thresh)
     @classmethod
     def build(cls, n, indvars):
@@ -35,7 +35,7 @@ class RegressionTree(object):
     >>> t.grow()
     False
     """
-    def __init__(self, observations, binary=None):
+    def __init__(self, observations, domains=None, binary=None):
         """Builds a tree. Data is of form ((indvar1, indvar2, indvar3, ...), depvar)
         Ideally a named tuple of input data.
 
@@ -45,6 +45,8 @@ class RegressionTree(object):
         self.condition = None
         self.left = None
         self.right = None
+        if domains is None:
+            self.domains = [(min(domain), max(domain)) for domain in [[obs[0][i] for obs in self.observations] for i in range(len(self.observations[0][0]))]]
         if binary is None:
             self.binary = len(set(depvar for indvars, depvar in observations)) == 2
         else:
@@ -66,14 +68,21 @@ class RegressionTree(object):
         return "RegressionTree(%d samples)\n%s" % (len(self.observations), indent(self._str_helper()))
 
     def _str_helper(self):
-        indent = lambda x: '\n'.join([' '*4+line for line in x.split('\n')])
+        indent = lambda x, y: '\n'.join([y+line for line in x.split('\n')])
         if self.uniform:
             return "%s (%d observations)" % (self.value, len(self.observations))
         if self.condition is None:
-            return "Unexpanded: ave %s, %d observations: %r)" % (self.value, len(self.observations), self.observations)
+            return "Unexpanded: ave %s, %d observations)" % (self.value, len(self.observations))
         return "if %s\n%s\nelse\n%s" % (self.condition.display(self.observations[0]),
-                                                              indent(self.left._str_helper()),
-                                                              indent(self.right._str_helper()))
+                                                              indent(self.left._str_helper(),  '|   '),
+                                                              indent(self.right._str_helper(), '    '))
+    def __call__(self, depvars):
+        if self.condition is None:
+            return self.value
+        if self.condition(depvars):
+            return self.left(depvars)
+        else:
+            return self.right(depvars)
 
     @property
     def observations(self):
@@ -99,7 +108,7 @@ class RegressionTree(object):
             return self.left.grow() or self.right.grow()
         if not self._observations:
             return False
-        classifiers = Classifier.build(10, range(len(self.observations[0][0])))
+        classifiers = Classifier.build(RESOLUTION, range(len(self.observations[0][0])))
         if self.binary:
             best = max(classifiers, key=lambda c: safe(discrete_info_gain(c, self.observations)))
             left_group, right_group = split_by_classifier(best, self.observations)
@@ -110,6 +119,20 @@ class RegressionTree(object):
             self.right = RegressionTree(right_group, binary=self.binary)
         else:
             raise NotImplemented("how does entropy / info gain work?")
+
+    def show(self):
+        if not self.binary:
+            raise NotImplemented('how to graph that?')
+        predictions = [(indvars, depvar, self(indvars)) for indvars, depvar in self.observations]
+        correctly_true = [indvars for indvars, depvar, posterior in predictions if depvar and posterior]
+        correctly_false = [indvars for indvars, depvar, posterior in predictions if (not depvar) and (not posterior)]
+        incorrectly_true = [indvars for indvars, depvar, posterior in predictions if (not depvar) and posterior]
+        incorrectly_false = [indvars for indvars, depvar, posterior in predictions if depvar and (not posterior)]
+        for dataset, style in zip([correctly_true, correctly_false, incorrectly_true, incorrectly_false], ['bo', 'bx', 'rx', 'ro']):
+            if dataset:
+                pyplot.plot(*(zip(*dataset) + [style,]))
+        pyplot.show()
+
 
 def split_by_classifier(classifier, obs):
     """
@@ -144,12 +167,10 @@ def safe(value, replace=0):
 
 
 
-
-
 #test functions
 def points(n):
-    point = namedtuple('point', ('x', 'y'))
-    return [point(random.random(), random.random()) for x in range(n)]
+    point = namedtuple('p', ('x', 'y'))
+    return [point(round(random.random(), 2), round(random.random(), 2)) for x in range(n)]
 
 def circle((x, y)):
     return (x - .5)**2 + (y - .5)**2 < .3**2
@@ -163,9 +184,10 @@ doctest.testmod(optionflags=doctest.ELLIPSIS)
 discrete_entropy([[0, 0], [0, 1], [0, 1], [0, 1], [0, 1], [0, 0], [0, 0]])
 
 
-training_data = [(p, circle(p)) for p in points(100)]
+training_data = [(p, circle(p)) for p in points(1000)]
 t = RegressionTree(training_data)
 for i in range(10):
     print
     print t
     t.grow()
+t.show()
