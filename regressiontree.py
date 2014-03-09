@@ -197,13 +197,14 @@ def line((x, y)):
 import doctest
 doctest.testmod(optionflags=doctest.ELLIPSIS)
 
-discrete_entropy([[0, 0], [0, 1], [0, 1], [0, 1], [0, 1], [0, 0], [0, 0]])
+def prettiness(func, n):
+    training_data = [(p, func(p)) for p in points(1000)]
+    t = RegressionTree(training_data)
+    for i in range(10):
+        print
+        print t
+        t.grow()
+    t.show()
 
-
-training_data = [(p, line(p)) for p in points(1000)]
-t = RegressionTree(training_data)
-for i in range(10):
-    print
-    print t
-    t.grow()
-t.show()
+prettiness(line, 1000)
+prettiness(circle, 1000)
