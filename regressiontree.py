@@ -16,12 +16,13 @@ class Classifier(object):
         return 'Classifier(%s, %s)' % (self.which, self.thresh)
     def __str__(self):
         return 'f(in) -> in[%s] > %s' % (self.which, self.thresh)
-    def display(self, observation):
+    def display(self, observation, domains):
         if hasattr(observation[0], '_fields') and isinstance(self.which, int):
-            return '%s > %s' % (observation[0]._fields[self.which], self.thresh)
+            where = ', '.join("%s:%s-%s" % (name, low, high) for name, (low, high) in zip(observation[0]._fields, domains))
+            return '%s > %s | %s' % (observation[0]._fields[self.which], self.thresh, where)
         return 'data[%s] > %s' % (self.which, self.thresh)
     @classmethod
-    def build(cls, n, indvars):
+    def build(cls, n, indvars): #TODO take domain information so it's not a global search each time!
         """Returns classifiers for dividing each independent variable domain into n regions"""
         return [Classifier(which, i/float(n)) for which in indvars for i in range(1,n)]
 
@@ -73,7 +74,7 @@ class RegressionTree(object):
             return "%s (%d observations)" % (self.value, len(self.observations))
         if self.condition is None:
             return "Unexpanded: ave %s, %d observations)" % (self.value, len(self.observations))
-        return "if %s\n%s\nelse\n%s" % (self.condition.display(self.observations[0]),
+        return "if %s\n%s\nelse\n%s" % (self.condition.display(self.observations[0], self.domains),
                                                               indent(self.left._str_helper(),  '|   '),
                                                               indent(self.right._str_helper(), '    '))
     def __call__(self, depvars):
@@ -131,6 +132,20 @@ class RegressionTree(object):
         for dataset, style in zip([correctly_true, correctly_false, incorrectly_true, incorrectly_false], ['bo', 'bx', 'rx', 'ro']):
             if dataset:
                 pyplot.plot(*(zip(*dataset) + [style,]))
+        def nodes(start):
+            yield start
+            if start.left is not None:
+                for node in nodes(start.left):
+                    yield node
+            if start.right is not None:
+                for node in nodes(start.right):
+                    yield node
+        for node in nodes(self):
+            if node.condition:
+                line = [[None, None], [None, None]]
+                line[node.condition.which] = [node.condition.thresh, node.condition.thresh]
+                line[1 - node.condition.which] = node.domains[1 - node.condition.which]
+                pyplot.plot(*line)
         pyplot.show()
 
 
@@ -175,7 +190,8 @@ def points(n):
 def circle((x, y)):
     return (x - .5)**2 + (y - .5)**2 < .3**2
 
-
+def line((x, y)):
+    return x < 4*y
 
 
 import doctest
@@ -184,7 +200,7 @@ doctest.testmod(optionflags=doctest.ELLIPSIS)
 discrete_entropy([[0, 0], [0, 1], [0, 1], [0, 1], [0, 1], [0, 0], [0, 0]])
 
 
-training_data = [(p, circle(p)) for p in points(1000)]
+training_data = [(p, line(p)) for p in points(1000)]
 t = RegressionTree(training_data)
 for i in range(10):
     print
