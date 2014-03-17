@@ -4,7 +4,7 @@ import inspect
 from matplotlib import pyplot
 
 def points(n):
-    return [(random.random(), random.random()) for x in range(n)]
+    return [(random.random(), random.random()) for _ in range(n)]
 
 def split_by_classifier(classifier, points):
     return [p for p in points if classifier(p)], [p for p in points if not classifier(p)]
