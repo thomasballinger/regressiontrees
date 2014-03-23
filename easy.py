@@ -9,15 +9,23 @@ import math
 import random
 import numpy
 from pylab import imshow
-import matplotlib.pyplot
+import matplotlib.pyplot as plt
 
 # Let's always use 1 to 100 as the size!
 
-def synthetic(x, y, width=100, height=100, radius=20):
+def synthetic_circle(x, y, width=100, height=100, radius=20):
     in_circle = lambda xi, yi: ((x-xi)**2 + (y-yi)**2) < radius**2
     return numpy.random.rand(height, width) + numpy.array([[1 if in_circle(i, j) else 0
                                                             for i in range(width)]
                                                            for j in range(height)])
+
+def synthetic_sinkhole(x, y, width=100, height=100):
+    dist_from_point = lambda xi, yi: math.sqrt((x-xi)**2 + (y-yi)**2)
+    return numpy.random.rand(height, width)*40 + numpy.array([[dist_from_point(i, j)
+                                                            for i in range(width)]
+                                                           for j in range(height)])
+
+synthetic = synthetic_sinkhole
 
 class Feature(object):
     @classmethod
@@ -89,6 +97,8 @@ class DecisionTree(object):
     def grow(self, maxdepth):
         if maxdepth == 0:
             return False
+        if maxdepth < 0:
+            raise ValueError('whoops!')
         if self.feature:
             assert self.right and self.feature
             return self.left.grow(maxdepth - 1) or self.right.grow(maxdepth - 1)
@@ -150,19 +160,20 @@ def standard_error(obs1, obs2):
 
 def show(a2d):
     imshow(a2d)
-    matplotlib.pyplot.show()
+    plt.show()
 
 def synth():
     x, y = int(random.random()*100), int(random.random()*100)
     return (synthetic(x, y), (x, y))
 
-def evaluate(tree, n):
+def evaluate(tree, n, verbose=False):
     errors = []
     for _ in range(n):
         s = synth()
         predicted = tree(s[0])
         error = math.sqrt(distsqrd(s[1], predicted))
-        print "real:", s[1], "predicted:", predicted, "err:", error
+        if verbose:
+            print "real:", s[1], "predicted:", predicted, "err:", error
         errors.append(error)
     return ave(errors)
 
@@ -176,13 +187,31 @@ def trained_tree(n_obs, maxdepth):
 def random_classifier(stuff):
     return (random.random() * 100, random.random() * 100)
 
+def plot_depths(n_obs, n_trees, n_evals, depths=tuple(range(10))):
+    for _ in range(n_trees):
+        data = []
+        t = DecisionTree([synth() for _ in range(n_obs)])
+        for depth in sorted(depths):
+            t.grow_to_depth(depth)
+            data.append((depth, evaluate(t, n_evals)))
+        depths, results = zip(*data)
+        plt.plot(depths, results)
+
+    plt.title('%d decision trees trained with %d observations' % (n_trees, n_obs))
+    plt.xlabel('max tree depth')
+    plt.ylabel('average error')
+    plt.ylim(ymin=0)
+    plt.xlim(xmin=min(depths) - .1)
+    plt.xlim(xmax=max(depths) + .1)
+    plt.show()
+
 if __name__ == '__main__':
+    show(synthetic(30, 60))
     import doctest
     doctest.testmod()
-    print 'baseline:', evaluate(random_classifier, 10)
-    d = trained_tree(2000, 6)
-    print d
-    print "error:", evaluate(d, 10)
-
-
+    #print 'baseline:', evaluate(random_classifier, 10)
+    #d = trained_tree(2000, 6)
+    #print d
+    #print "error:", evaluate(d, 10)
+    #plot_depths(n_obs=1000, n_trees=5, n_evals=100, depths=range(10))
 
