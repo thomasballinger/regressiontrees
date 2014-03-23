@@ -5,7 +5,7 @@ Figure out where the center is in them
 """
 
 
-
+import math
 import random
 import numpy
 from pylab import imshow
@@ -28,7 +28,7 @@ class Feature(object):
         self.p1 = (x1, y1)
         self.p2 = (x2, y2)
     def __call__(self, im):
-        return im[self.p1] > im[self.p1]
+        return im[self.p1] > im[self.p2]
     def __repr__(self):
         return 'Feature(%r, %r)' % (self.p1, self.p2)
     def __str___(self):
@@ -48,17 +48,17 @@ class DecisionTree(object):
 
     def __repr__(self):
         if self.feature is None:
-            return "RegressionTree(ave %s, %d observations)" % (self.value, len(self.observations))
+            return "RegressionTree(ave (%d, %d), %d observations)" % (self.value[0], self.value[1], len(self.observations))
         return "RegressionTree(%s)" % (self.feature)
 
     def __str__(self):
         if self.feature is None:
             return repr(self)
-        return "RegressionTree(%d samples)\n%s" % (len(self.observations), indent(self._str_helper()), '    ')
+        return "RegressionTree(%d samples)\n%s" % (len(self.observations), indent(self._str_helper(), '    '))
 
     def _str_helper(self):
         if self.feature is None:
-            return "Unexpanded: ave %s, %d observations)" % (self.value, len(self.observations))
+            return "Unexpanded: ave (%d, %d), %d observations)" % (self.value[0], self.value[1], len(self.observations))
         return "if %s\n%s\nelse\n%s" % (self.feature,
                                         indent(self.left._str_helper(),  '|   '),
                                         indent(self.right._str_helper(), '    '))
@@ -91,22 +91,98 @@ class DecisionTree(object):
             return False
         if self.feature:
             assert self.right and self.feature
-            return self.left.grow() or self.right.grow()
+            return self.left.grow(maxdepth - 1) or self.right.grow(maxdepth - 1)
         if not self._observations:
             return False
         classifiers = [Feature.random() for _ in range(10)]
-        best = max(classifiers, key=lambda c: safe(discrete_info_gain(c, self.observations)))
-        left_group, right_group = split_by_classifier(best, self.observations)
+        best = min(classifiers, key=lambda c: standard_error(*split_by_feature(c, self.observations)))
+        left_group, right_group = split_by_feature(best, self.observations)
         if not all([left_group, right_group]):
             return False
         self.feature = best
         self.left = DecisionTree(left_group)
         self.right = DecisionTree(right_group)
+        return True
+
+    def grow_to_depth(self, maxdepth):
+        while self.grow(maxdepth):
+            pass
+
+def split_by_feature(feature, observations):
+    """
+    >>> split_by_feature(lambda x: x == 'a', [('a', (1, 2)), ('b', (-1, -2))])
+    ([('a', (1, 2))], [('b', (-1, -2))])
+    """
+    yes = []
+    no = []
+    for data, (x, y) in observations:
+        if feature(data):
+            yes.append((data, (x, y)))
+        else:
+            no.append((data, (x, y)))
+    return yes, no
+
+def ave(things):
+    return sum(things) / float(len(things))
+
+def ave_pos(obs):
+    return [ave(z) for z in zip(*[(x,y) for im, (x, y) in obs])]
+
+def distsqrd((x1, y1), (x2, y2)):
+    return (x1-x2)**2 + (y1-y2)**2
+
+def group_error(obs):
+    ave = ave_pos(obs)
+    return sum(distsqrd(ave, (x, y)) for im, (x, y) in obs)
+
+def standard_error(obs1, obs2):
+    """
+    >>> ave([1,2,3])
+    2.0
+    >>> ave_pos([('stuff', (1, 2)), ('stuff', (-1, -2))])
+    [0.0, 0.0]
+    >>> distsqrd((0,0), (3, 4))
+    25
+    >>> group_error([('stuff', (1, 2)), ('stuff', (-1, -2))])
+    10.0
+    """
+    return group_error(obs1) + group_error(obs2)
 
 def show(a2d):
     imshow(a2d)
     matplotlib.pyplot.show()
 
+def synth():
+    x, y = int(random.random()*100), int(random.random()*100)
+    return (synthetic(x, y), (x, y))
+
+def evaluate(tree, n):
+    errors = []
+    for _ in range(n):
+        s = synth()
+        predicted = tree(s[0])
+        error = math.sqrt(distsqrd(s[1], predicted))
+        print "real:", s[1], "predicted:", predicted, "err:", error
+        errors.append(error)
+    return ave(errors)
+
+def trained_tree(n_obs, maxdepth):
+    training = [synth() for _ in range(n_obs)]
+    #show(training[0][0])
+    d = DecisionTree(training)
+    d.grow_to_depth(maxdepth)
+    return d
+
+def random_classifier(stuff):
+    return (random.random() * 100, random.random() * 100)
+
 if __name__ == '__main__':
-    training = [(synthetic(x, y), (x, y)) for x, y in [(int(random.random()), int(random.random())) for _ in range(100)]]
-    show(training[0][0])
+    import doctest
+    doctest.testmod()
+    print 'baseline:', evaluate(random_classifier, 10)
+    d = trained_tree(2000, 6)
+    print d
+    print "error:", evaluate(d, 10)
+
+
+
